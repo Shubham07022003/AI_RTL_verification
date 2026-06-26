@@ -10,6 +10,8 @@ import sys
 import os
 
 from state import verification_state
+
+
 from agent import run_verification
 
 
@@ -22,7 +24,7 @@ def validate_file(filepath):
 
 
 def main():
-
+    verification_state.clear()
     # Check arguments
     if len(sys.argv) != 3:
         print(

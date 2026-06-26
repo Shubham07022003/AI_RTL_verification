@@ -32,7 +32,8 @@ def rtl_parser() -> str:
         Summary of extracted RTL information.
     """
 
-    rtl_file = verification_state["rtl_file"]
+    # rtl_file = verification_state["rtl_file"]
+    rtl_file = verification_state.get("rtl_file")
 
     if not rtl_file:
         return "ERROR: RTL file path not found in state."
@@ -47,9 +48,9 @@ def rtl_parser() -> str:
         errors="ignore"
     )
 
-    # ----------------------------------------
+  
     # Module Name
-    # ----------------------------------------
+   
 
     module_match = re.search(
         r"\bmodule\s+(\w+)",
@@ -63,45 +64,44 @@ def rtl_parser() -> str:
         else "UNKNOWN"
     )
 
-    # ----------------------------------------
     # Parameters
-    # ----------------------------------------
+    
 
     parameters = re.findall(
         r"\bparameter\s+(\w+)",
         rtl_code
     )
 
-    # ----------------------------------------
+
     # Inputs
-    # ----------------------------------------
+   
 
     inputs = re.findall(
         r"\binput\b\s*(?:wire|reg|logic)?\s*(?:\[[^\]]+\])?\s*(\w+)",
         rtl_code
     )
 
-    # ----------------------------------------
+   
     # Outputs
-    # ----------------------------------------
+   
 
     outputs = re.findall(
         r"\boutput\b\s*(?:wire|reg|logic)?\s*(?:\[[^\]]+\])?\s*(\w+)",
         rtl_code
     )
 
-    # ----------------------------------------
+   
     # Inouts
-    # ----------------------------------------
+
 
     inouts = re.findall(
         r"\binout\b\s*(?:wire)?\s*(?:\[[^\]]+\])?\s*(\w+)",
         rtl_code
     )
 
-    # ----------------------------------------
+
     # Store Result
-    # ----------------------------------------
+   
 
     module_info = {
         "module_name": module_name,
@@ -114,9 +114,9 @@ def rtl_parser() -> str:
 
     verification_state["module_info"] = module_info
 
-    # ----------------------------------------
+   
     # Agent Summary
-    # ----------------------------------------
+
 
     summary = f"""
 RTL Parsing Complete

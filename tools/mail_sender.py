@@ -54,9 +54,9 @@ def send_email_report() -> str:
     else:
         edge_case_text = "None"
 
-    # ----------------------------------------
+   
     # Email Body
-    # ----------------------------------------
+   
 
     body = f"""
 RTL Verification Summary

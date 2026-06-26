@@ -1,0 +1,7 @@
+langchain==0.3.17
+langchain-core==0.3.34
+langchain-groq==0.2.2
+langchain-community==0.3.16
+python-dotenv==1.0.1
+requests==2.32.3
+pydantic==2.10.6

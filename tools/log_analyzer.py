@@ -16,206 +16,115 @@ except Exception:
 
 from state import verification_state
 
+def _extract_relevant_lines(text: str, keyword: str, max_lines: int = 15) -> list:
+    """Helper to extract lines containing a specific keyword."""
+    if not text:
+        return []
+    
+    matched_lines = []
+    for line in text.splitlines():
+        if keyword.lower() in line.lower():
+            # Clean up the line and avoid empty strings
+            clean_line = line.strip()
+            if clean_line:
+                matched_lines.append(clean_line)
+                
+    # Limit lines to prevent overflowing the LLM context window
+    if len(matched_lines) > max_lines:
+        return matched_lines[:max_lines] + [f"... and {len(matched_lines) - max_lines} more {keyword}s omitted."]
+    return matched_lines
+
 
 @tool
 def analyze_logs() -> str:
     """
     Analyze compile.log and simulation.log.
 
-    Detect:
+    Detect and return exact lines for:
     - Errors
     - Warnings
     - Syntax Issues
     - Simulation Runtime Issues
     """
-
-    sim_result = verification_state.get(
-        "simulation_result",
-        {}
-    )
-
-    compile_log_path = sim_result.get(
-        "compile_log"
-    )
-
-    simulation_log_path = sim_result.get(
-        "simulation_log"
-    )
+    sim_result = verification_state.get("simulation_result", {})
+    compile_log_path = sim_result.get("compile_log")
+    simulation_log_path = sim_result.get("simulation_log")
 
     compile_text = ""
     simulation_text = ""
 
-    # ---------------------------------------
-    # Read Compile Log
-    # ---------------------------------------
-
+   
+    # Read Logs
+   
     if compile_log_path and Path(compile_log_path).exists():
-
-        compile_text = Path(
-            compile_log_path
-        ).read_text(
-            encoding="utf-8",
-            errors="ignore"
-        )
-
-    # ---------------------------------------
-    # Read Simulation Log
-    # ---------------------------------------
+        compile_text = Path(compile_log_path).read_text(encoding="utf-8", errors="ignore")
 
     if simulation_log_path and Path(simulation_log_path).exists():
+        simulation_text = Path(simulation_log_path).read_text(encoding="utf-8", errors="ignore")
 
-        simulation_text = Path(
-            simulation_log_path
-        ).read_text(
-            encoding="utf-8",
-            errors="ignore"
-        )
 
-    # ---------------------------------------
-    # Error Detection
-    # ---------------------------------------
+    # Exact Message Extraction
+   
+    # Instead of just counting, we grab the actual log lines
+    compile_error_lines = _extract_relevant_lines(compile_text, "error")
+    compile_warning_lines = _extract_relevant_lines(compile_text, "warning")
+    
+    sim_error_lines = _extract_relevant_lines(simulation_text, "error")
+    sim_warning_lines = _extract_relevant_lines(simulation_text, "warning")
 
-    compile_errors = re.findall(
-        r"error",
-        compile_text,
-        flags=re.IGNORECASE
-    )
-
-    compile_warnings = re.findall(
-        r"warning",
-        compile_text,
-        flags=re.IGNORECASE
-    )
-
-    simulation_errors = re.findall(
-        r"error",
-        simulation_text,
-        flags=re.IGNORECASE
-    )
-
-    simulation_warnings = re.findall(
-        r"warning",
-        simulation_text,
-        flags=re.IGNORECASE
-    )
-
-    # ---------------------------------------
-    # Common Verilog Issues
-    # ---------------------------------------
 
     detected_issues = []
-
-    # patterns = {
-
-    #     "Syntax Error":
-    #         r"syntax error",
-
-    #     "Undefined Module":
-    #         r"unknown module",
-
-    #     "Port Mismatch":
-    #         r"port.*expects",
-
-    #     "Signal Width Mismatch":
-    #         r"width",
-
-    #     "Multiple Drivers":
-    #         r"multiple drivers",
-
-    #     "Unconnected Port":
-    #         r"unconnected",
-
-    #     "Timescale Warning":
-    #         r"timescale",
-
-    #     "Unknown Value X":
-    #         r"\bx\b",
-
-    #     "High Impedance Z":
-    #         r"\bz\b"
-    # }
     patterns = {
-
-    "Syntax Error":
-        r"syntax error",
-
-    "Port Connection Error":
-        r"not a port of",
-
-    "Signal Binding Error":
-        r"unable to bind",
-
-    "Elaboration Failure":
-        r"during elaboration",
-
-    "Undefined Module":
-        r"unknown module",
-
-    "Port Mismatch":
-        r"port",
-
+        "Syntax Error": r"syntax error",
+        "Port Connection Error": r"not a port of",
+        "Signal Binding Error": r"unable to bind",
+        "Elaboration Failure": r"during elaboration",
+        "Undefined Module": r"unknown module",
+        "Port Mismatch": r"port",
     }
 
-    combined_text = (
-        compile_text +
-        "\n" +
-        simulation_text
-    )
-
+    combined_text = compile_text + "\n" + simulation_text
     for issue_name, pattern in patterns.items():
-
-        if re.search(
-            pattern,
-            combined_text,
-            flags=re.IGNORECASE
-        ):
+        if re.search(pattern, combined_text, flags=re.IGNORECASE):
             detected_issues.append(issue_name)
 
-    # ---------------------------------------
-    # Save Results
-    # ---------------------------------------
 
     result = {
-
-        "compile_error_count":
-            len(compile_errors),
-
-        "compile_warning_count":
-            len(compile_warnings),
-
-        "simulation_error_count":
-            len(simulation_errors),
-
-        "simulation_warning_count":
-            len(simulation_warnings),
-
-        "detected_issues":
-            detected_issues
+        "compile_error_count": len(compile_error_lines),
+        "compile_warning_count": len(compile_warning_lines),
+        "simulation_error_count": len(sim_error_lines),
+        "simulation_warning_count": len(sim_warning_lines),
+        "detected_issues": detected_issues,
+        "raw_compile_errors": compile_error_lines,
+        "raw_sim_errors": sim_error_lines
     }
-
     verification_state["log_analysis"] = result
 
-    # ---------------------------------------
-    # Return Summary
-    # ---------------------------------------
+
+    # Build LLM-Friendly Summary
+   
+    def format_lines(lines):
+        return "\n".join([f"    - {line}" for line in lines]) if lines else "    None"
 
     summary = f"""
     Log Analysis Complete
 
-    Compile Errors:
-    {len(compile_errors)}
+    Compile Errors ({len(compile_error_lines)}):
+{format_lines(compile_error_lines)}
 
-    Compile Warnings:
-    {len(compile_warnings)}
+    Compile Warnings ({len(compile_warning_lines)}):
+{format_lines(compile_warning_lines)}
 
-    Simulation Errors:
-    {len(simulation_errors)}
+    Simulation Errors ({len(sim_error_lines)}):
+{format_lines(sim_error_lines)}
 
-    Simulation Warnings:
-    {len(simulation_warnings)}
+    Simulation Warnings ({len(sim_warning_lines)}):
+{format_lines(sim_warning_lines)}
 
-    Detected Issues:
+    Detected Issue Categories:
     {detected_issues if detected_issues else "None"}
     """
 
     return summary.strip()
+
+

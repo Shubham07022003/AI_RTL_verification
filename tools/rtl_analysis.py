@@ -21,9 +21,9 @@ def extract_rtl_findings(rtl_code: str):
 
     findings = []
 
-    # --------------------------------------------------
+   
     # Multiple count updates
-    # --------------------------------------------------
+
 
     count_updates = len(
         re.findall(
@@ -37,9 +37,8 @@ def extract_rtl_findings(rtl_code: str):
             "Register 'count' updated multiple times."
         )
 
-    # --------------------------------------------------
     # Multiple state updates
-    # --------------------------------------------------
+   
 
     state_updates = len(
         re.findall(
@@ -54,9 +53,9 @@ def extract_rtl_findings(rtl_code: str):
             "FSM state updated multiple times."
         )
 
-    # --------------------------------------------------
+
     # Simultaneous read/write risk
-    # --------------------------------------------------
+   
 
     if (
         "wr_en" in rtl_code and
@@ -67,9 +66,9 @@ def extract_rtl_findings(rtl_code: str):
             "Possible simultaneous read/write count conflict."
         )
 
-    # --------------------------------------------------
+   
     # Missing reset
-    # --------------------------------------------------
+   
 
     if not re.search(
         r"\brst\b|\breset\b",
@@ -80,9 +79,8 @@ def extract_rtl_findings(rtl_code: str):
             "No reset logic detected."
         )
 
-    # --------------------------------------------------
     # FSM without default
-    # --------------------------------------------------
+   
 
     if "case" in rtl_code.lower():
 
@@ -92,9 +90,9 @@ def extract_rtl_findings(rtl_code: str):
                 "Case statement without default."
             )
 
-    # --------------------------------------------------
+   
     # Latch risk
-    # --------------------------------------------------
+  
 
     if (
         "always @(*)" in rtl_code or
@@ -107,9 +105,9 @@ def extract_rtl_findings(rtl_code: str):
                 "Possible latch inference."
             )
 
-    # --------------------------------------------------
+
     # Width mismatch risk
-    # --------------------------------------------------
+   
 
     if "integer" in rtl_code:
 
@@ -131,14 +129,20 @@ def analyze_rtl() -> str:
         {}
     )
 
-    if simulation_result.get(
-        "compile_status"
-    ) != "PASS":
+    # if simulation_result.get(
+    #     "compile_status"
+    # ) != "PASS":
 
-        return (
-            "RTL Analysis Skipped.\n"
-            "Compilation failed."
-        )
+    #     return (
+    #         "RTL Analysis Skipped.\n"
+    #         "Compilation failed."
+    #     )
+
+    if simulation_result.get("compile_status") != "PASS":
+        # Let the AI read the compile log and explain the error instead of skipping!
+        compile_log_path = simulation_result.get("compile_log")
+        log_content = Path(compile_log_path).read_text()
+        return f"Compilation failed. Analyze these errors: {log_content}"
 
     rtl_file = verification_state.get(
         "rtl_file"

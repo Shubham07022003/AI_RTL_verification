@@ -1,7 +1,7 @@
 """
 tools/report.py
 
-Generate final RTL Verification Report.
+Generate final RTL Verification Report (Markdown) and a code-only summary (Text).
 """
 
 from pathlib import Path
@@ -15,215 +15,147 @@ except Exception:
 from state import verification_state
 
 
-@tool
-def generate_report() -> str:
-    """
-    Generate final verification report.
-    """
+def _format_list(items, bullet="-") -> str:
+    """Helper to format Python lists into clean Markdown bullet points."""
+    if not items:
+        return "None"
+    if isinstance(items, list):
+        return "\n".join([f"{bullet} {str(item)}" for item in items])
+    return str(items)
 
+
+@tool
+def generate_report(rtl_code_fixes: str = "No specific RTL code changes provided.", 
+                    tb_code_fixes: str = "No specific Testbench code provided.") -> str:
+    """
+    Generate the final verification report AND a summary.txt with only code changes.
+    
+    Args:
+        rtl_code_fixes: The exact Verilog code snippet to fix the RTL design.
+        tb_code_fixes: The exact Verilog code snippet to add to the testbench.
+    """
     reports_dir = Path("reports")
     reports_dir.mkdir(exist_ok=True)
-
+    
+    # Define our two output files
     report_file = reports_dir / "verification_report.md"
+    summary_file = reports_dir / "summary.txt"
 
-    # ------------------------------------------------
-    # State Data
-    # ------------------------------------------------
+    # Save the LLM's generated code directly into the state
+    verification_state["code_fixes"] = rtl_code_fixes
+    verification_state["tb_code_fixes"] = tb_code_fixes
 
-    module_info = verification_state.get(
-        "module_info",
-        {}
-    )
+    # Extract State Data
+   
+    module_info = verification_state.get("module_info", {})
+    sim_result = verification_state.get("simulation_result", {})
+    log_analysis = verification_state.get("log_analysis", {})
+    rtl_analysis = verification_state.get("rtl_analysis", {})
+    tb_analysis = verification_state.get("tb_analysis", {})
+    missing_edge_cases = verification_state.get("missing_edge_cases", [])
+    
+    rtl_file = verification_state.get("rtl_file", "Unknown")
+    tb_file = verification_state.get("tb_file", "Unknown")
 
-    simulation_result = verification_state.get(
-        "simulation_result",
-        {}
-    )
+    c_errs = log_analysis.get("compile_error_count", 0)
+    s_errs = log_analysis.get("simulation_error_count", 0)
+    total_errors = c_errs + s_errs
+    overall_status = "PASS" if total_errors == 0 else "FAIL"
+    status_emoji = "✅" if total_errors == 0 else "❌"
 
-    log_analysis = verification_state.get(
-        "log_analysis",
-        {}
-    )
 
-    rtl_analysis = verification_state.get(
-        "rtl_analysis",
-        {}
-    )
+    # 1. BUILD FULL MARKDOWN REPORT (NO RAW CODE)
+   
+    report = f"""# RTL Verification Report {status_emoji}
 
-    tb_analysis = verification_state.get(
-        "tb_analysis",
-        {}
-    )
-
-    missing_edge_cases = verification_state.get(
-        "missing_edge_cases",
-        []
-    )
-
-    rtl_file = verification_state.get(
-        "rtl_file",
-        "Unknown"
-    )
-
-    tb_file = verification_state.get(
-        "tb_file",
-        "Unknown"
-    )
-
-    # ------------------------------------------------
-    # Report
-    # ------------------------------------------------
-
-    report = f"""# RTL Verification Report
+## 1. Executive Summary
+* **Overall Status:** **{overall_status}**
+* **Compile Status:** {sim_result.get('compile_status', 'UNKNOWN')} ({c_errs} Errors)
+* **Simulation Status:** {sim_result.get('simulation_status', 'UNKNOWN')} ({s_errs} Errors)
+* **Module Under Test:** `{module_info.get('module_name', 'Unknown')}`
 
 ---
 
-## Input Files
-
-**RTL File**
-
-`{rtl_file}`
-
-**Testbench File**
-
-`{tb_file}`
+## 2. File & Module Information
+**RTL Design:** `{rtl_file}`  
+**Testbench:** `{tb_file}`  
 
 ---
 
-## RTL Information
+## 3. Log & Simulation Analysis
+**Compile Errors:** {c_errs} | **Warnings:** {log_analysis.get('compile_warning_count', 0)}  
+**Simulation Errors:** {s_errs} | **Warnings:** {log_analysis.get('simulation_warning_count', 0)}  
+**Issues:** {_format_list(log_analysis.get('detected_issues', []), bullet="*")}
+"""
+    raw_c_errs = log_analysis.get("raw_compile_errors", [])
+    if raw_c_errs:
+        report += "\n**Raw Compile Errors:**\n```text\n" + "\n".join(raw_c_errs) + "\n```\n"
 
-### Module Name
-
-{module_info.get("module_name", "Unknown")}
-
-### Inputs
-
-{module_info.get("inputs", [])}
-
-### Outputs
-
-{module_info.get("outputs", [])}
-
-### Parameters
-
-{module_info.get("parameters", [])}
-
+    report += f"""
 ---
 
-## Simulation Summary
-
-### Compile Status
-
-{simulation_result.get("compile_status", "UNKNOWN")}
-
-### Simulation Status
-
-{simulation_result.get("simulation_status", "UNKNOWN")}
-
-### Compile Log
-
-{simulation_result.get("compile_log", "N/A")}
-
-### Simulation Log
-
-{simulation_result.get("simulation_log", "N/A")}
-
----
-
-## Log Analysis
-
-### Compile Errors
-
-{log_analysis.get("compile_error_count", 0)}
-
-### Compile Warnings
-
-{log_analysis.get("compile_warning_count", 0)}
-
-### Simulation Errors
-
-{log_analysis.get("simulation_error_count", 0)}
-
-### Simulation Warnings
-
-{log_analysis.get("simulation_warning_count", 0)}
-
-### Detected Issues
-
-{log_analysis.get("detected_issues", [])}
-
----
-
-## RTL Design Analysis
-
+## 4. Agent Analysis: RTL Design
 {rtl_analysis.get("analysis", "No RTL analysis available.")}
 
 ---
 
-## Testbench Analysis
-
+## 5. Agent Analysis: Testbench & Coverage
 {tb_analysis.get("analysis", "No Testbench analysis available.")}
 
----
-
-## Missing Edge Cases
-
-"""
-
-    if missing_edge_cases:
-
-        for item in missing_edge_cases:
-            report += f"- {item}\n"
-
-    else:
-
-        report += "No missing edge cases detected.\n"
-
-    report += """
+**Missing Edge Cases to Add:**
+{_format_list(missing_edge_cases, bullet="- [ ]")}
 
 ---
 
-## Verification Conclusion
+## 6. Actionable Code Changes
+*Specific Verilog code fixes and testbench updates have been extracted and saved separately to keep this report clean.*
 
-Review RTL issues,
-testbench weaknesses,
-and missing edge cases before signoff.
+👉 **Please open `reports/summary.txt` for the exact code to copy and paste.**
 
-Generated by RTL Verification Agent.
-
+---
+*Generated by LangChain RTL Verification Agent*
 """
 
-    # ------------------------------------------------
-    # Save Report
-    # ------------------------------------------------
 
-    report_file.write_text(
-        report,
-        encoding="utf-8"
-    )
+    # 2. BUILD SUMMARY.TXT (CODE ONLY)
 
-    # ------------------------------------------------
-    # Save State
-    # ------------------------------------------------
+    summary_text = f"""==================================================
+VERIFICATION ACTION SUMMARY
+Module: {module_info.get('module_name', 'Unknown')}
+Status: {overall_status}
+==================================================
 
+--------------------------------------------------
+[1] REQUIRED RTL CODE CHANGES
+--------------------------------------------------
+{rtl_code_fixes}
+
+
+--------------------------------------------------
+[2] MISSING TESTBENCH SCENARIOS
+--------------------------------------------------
+{_format_list(missing_edge_cases, bullet="->")}
+
+--------------------------------------------------
+[3] TESTBENCH CODE TO ADD
+--------------------------------------------------
+{tb_code_fixes}
+
+==================================================
+"""
+
+
+    # Save Files & Update State
+   
+    report_file.write_text(report, encoding="utf-8")
+    summary_file.write_text(summary_text, encoding="utf-8")
+    
     verification_state["final_report"] = report
 
-    # ------------------------------------------------
-    # Return Summary
-    # ------------------------------------------------
+    # Return Tool Summary to Agent
 
     return f"""
-Verification report generated successfully.
-
-Report Path:
-{report_file}
-
-Module:
-{module_info.get("module_name", "Unknown")}
-
-Compile Status:
-{simulation_result.get("compile_status", "UNKNOWN")}
-
-Simulation Status:
-{simulation_result.get("simulation_status", "UNKNOWN")}
-""".strip()
+Verification reports generated successfully.
+Full Report: {report_file}
+Code Summary: {summary_file}
+"""
