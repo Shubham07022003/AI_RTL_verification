@@ -161,9 +161,6 @@ The generated report contains:
 - CDC Analysis
 - Waveform Analysis
 - AI-generated RTL Fixes
-- AI-generated Testbenches
-- Coverage Analysis
-- Multi-Agent Verification
 
 ---
 
