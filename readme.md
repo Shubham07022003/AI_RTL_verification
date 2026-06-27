@@ -1,8 +1,6 @@
 # AI RTL Verification Agent
 
-An AI-powered RTL Verification framework that analyzes Verilog RTL designs and testbenches using **LangChain**, **llama-3.3-70b-versatile**, and **Icarus Verilog**.
-
-The agent automatically compiles, simulates, analyzes RTL functionality, evaluates testbench quality, and generates a verification report.
+An AI-powered RTL Verification Agent that analyzes Verilog RTL designs, detects potential functional issues, identifies missing verification scenarios and edge cases, evaluates testbench quality, and generates an automated verification report.
 
 ---
 
