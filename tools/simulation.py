@@ -23,6 +23,7 @@ except Exception:
         return func
 
 from state import verification_state
+from tools.uvm import is_uvm_tb
 
 
 # --------------------------------------------------
@@ -41,8 +42,12 @@ SIM_TIMEOUT_SECONDS = int(os.environ.get("SIM_TIMEOUT_SECONDS", "120"))
 
 def compile_and_simulate(rtl_file, tb_file, temp_dir="temp", timeout=None):
     """
-    Compile rtl_file + tb_file with Icarus Verilog and (if compilation
-    succeeds) simulate the result.
+    Compile rtl_file + tb_file and simulate the result.
+
+    Backend selection:
+      - UVM testbench (detected via tools/uvm.py) -> UVM backend
+        (tools/uvm_backend.py, requires a UVM-capable simulator)
+      - otherwise -> Icarus Verilog (default, current behavior)
 
     Returns a plain dict:
         {
@@ -59,6 +64,23 @@ def compile_and_simulate(rtl_file, tb_file, temp_dir="temp", timeout=None):
 
     rtl_file = str(rtl_file)
     tb_file = str(tb_file)
+
+    # ------------------------------------------
+    # Backend selection: UVM vs Icarus Verilog
+    # ------------------------------------------
+
+    try:
+        tb_code = Path(tb_file).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        tb_code = ""
+
+    if tb_code and is_uvm_tb(tb_code):
+        from tools.uvm_backend import run_uvm_simulation
+        result = run_uvm_simulation(rtl_file, tb_file, temp_dir=temp_dir, timeout=timeout)
+        verification_state["testbench_type"] = "UVM"
+        return result
+
+    verification_state["testbench_type"] = "PLAIN"
 
     temp_dir = Path(temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)

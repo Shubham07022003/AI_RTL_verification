@@ -23,7 +23,11 @@ verification_state = {
 
     "suggestions": [],
 
-    "final_report": ""
+    "final_report": "",
+
+    "testbench_type": "UNKNOWN",
+
+    "uvm_facts": {}
 }
 
 
@@ -53,5 +57,9 @@ def reset_state():
 
         "suggestions": [],
 
-        "final_report": ""
+        "final_report": "",
+
+        "testbench_type": "UNKNOWN",
+
+        "uvm_facts": {}
     })

@@ -435,9 +435,20 @@ AI-powered Testbench Analysis Tool (Dynamic Version)
 
 import re
 from pathlib import Path
-from langchain.tools import tool
 from state import verification_state
-from llm import invoke_llm
+from tools.uvm import detect_testbench_type, extract_uvm_facts
+
+try:
+    from langchain.tools import tool
+except Exception:
+    def tool(func):
+        return func
+
+try:
+    from llm import invoke_llm
+except Exception:
+    invoke_llm = None
+
 
 @tool
 def analyze_testbench() -> str:
@@ -452,7 +463,10 @@ def analyze_testbench() -> str:
     if sim_result.get("compile_status") != "PASS":
         # Let the AI read the compile log and explain the error instead of skipping!
         compile_log_path = sim_result.get("compile_log")
-        log_content = Path(compile_log_path).read_text()
+        try:
+            log_content = Path(compile_log_path).read_text(encoding="utf-8", errors="ignore") if compile_log_path else "(no compile log available)"
+        except Exception as e:
+            log_content = f"(could not read compile log: {e})"
         return f"Compilation failed. Analyze these errors: {log_content}"
     rtl_file = verification_state.get("rtl_file")
     tb_file = verification_state.get("tb_file")
@@ -462,6 +476,15 @@ def analyze_testbench() -> str:
     rtl_code = Path(rtl_file).read_text(encoding="utf-8", errors="ignore")
     tb_code = Path(tb_file).read_text(encoding="utf-8", errors="ignore")
     tb_lower = tb_code.lower()
+
+    # ---------------------------------------------------------
+    # UVM DETECTION + FACTS
+    # ---------------------------------------------------------
+    testbench_type = verification_state.get("testbench_type") or detect_testbench_type(tb_file)
+    is_uvm = (testbench_type == "UVM")
+    uvm_facts = verification_state.get("uvm_facts") or (
+        extract_uvm_facts(tb_code, tb_file) if is_uvm else {}
+    )
 
     # ---------------------------------------------------------
     # DYNAMIC CHECKLIST GENERATION
@@ -475,6 +498,39 @@ def analyze_testbench() -> str:
     dynamic_checklist.append("Invalid/Illegal input combinations")
     
     checklist_str = "\n".join([f"- {item}" for item in dynamic_checklist])
+
+    # ---------------------------------------------------------
+    # UVM FACTS BLOCK (only for UVM testbenches)
+    # ---------------------------------------------------------
+    uvm_block = ""
+    if is_uvm:
+        uvm_block = f"""
+    =================================================
+    UVM TESTBENCH FACTS (extracted deterministically)
+    =================================================
+    Testbench Type: UVM
+    Top Module: {uvm_facts.get('top_module')}
+    Top Test Class: {uvm_facts.get('top_test_class')}
+    Top Test Module Extends: {uvm_facts.get('top_extends')}
+    Components Extended: {uvm_facts.get('components_extended')}
+    Phases Overridden: {uvm_facts.get('phases_overridden')}
+    Sequences: {uvm_facts.get('sequences_count')}
+    uvm_config_db Used: {uvm_facts.get('uvm_config_db')}
+    Scoreboard Present: {uvm_facts.get('scoreboard_present')}
+    Monitor Present: {uvm_facts.get('monitor_present')}
+    Driver Present: {uvm_facts.get('driver_present')}
+    Sequencer Present: {uvm_facts.get('sequencer_present')}
+    Assertions Present: {uvm_facts.get('assertions_present')}
+    DUT Module: {uvm_facts.get('dut_module')} (instance: {uvm_facts.get('dut_instance')})
+    =================================================
+
+    UVM CRITICAL RULES - follow strictly:
+    - This is a UVM testbench. It uses uvm_test/uvm_env/uvm_sequencer/uvm_driver/uvm_monitor/uvm_scoreboard
+      classes and phases instead of plain Verilog $display/$monitor/rst/wr_en/empty/full idioms.
+    - Do NOT flag the absence of those plain-Verilog mechanisms as a weakness or missing coverage.
+    - Evaluate the UVM structure: components present, sequences, phase overrides, config_db, scoreboard.
+    - Only flag missing items when no UVM evidence could provide them (e.g. no scoreboard/monitor/driver at all).
+    """
 
     # ---------------------------------------------------------
     # PROMPT
@@ -494,12 +550,15 @@ def analyze_testbench() -> str:
     - Assertions / Self-checking mechanisms
     - Scoreboard implementation
 
+    {uvm_block}
+
     =================================================
     STRICT RULES
     =================================================
     1. Use ONLY evidence from the provided RTL and TB code.
     2. Do NOT mention FIFO, Pointers, or Buffers unless they exist in the module info.
     3. Focus on the actual ports: {module_info.get('inputs') + outputs}.
+    {"4. This is a UVM testbench - follow the UVM critical rules above. Never apply plain-Verilog checks to it." if is_uvm else ""}
     
     =================================================
     OUTPUT FORMAT
@@ -522,6 +581,9 @@ def analyze_testbench() -> str:
     Coverage Confidence:
     LOW/MEDIUM/HIGH
     """
+
+    if invoke_llm is None:
+        return "Testbench analysis unavailable: llm module not importable (groq missing)."
 
     analysis_result = invoke_llm(prompt, temperature=0)
 
@@ -546,6 +608,8 @@ def analyze_testbench() -> str:
     # ---------------------------------------------------------
     # SAVE STATE
     # ---------------------------------------------------------
+    verification_state["testbench_type"] = testbench_type
+    verification_state["uvm_facts"] = uvm_facts
     verification_state["tb_analysis"] = {"analysis": analysis_result}
     verification_state["missing_edge_cases"] = missing_edge_cases
 
