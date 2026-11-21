@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 # LangChain Imports
 from langchain_groq import ChatGroq
-from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 
 # Your Tool Imports
@@ -19,14 +19,15 @@ from tools.report import generate_report
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY not found in environment.")
 
 def run_verification() -> str:
     """
     Run RTL verification using a LangChain Agent to dynamically analyze 
     design issues and missing testbench edge cases.
     """
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY not found in environment.")
+
     # Ensure files were initialized by rtl_verify.py
     if not verification_state.get("rtl_file"):
         raise ValueError("RTL file path not set in verification state.")
