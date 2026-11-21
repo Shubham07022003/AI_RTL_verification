@@ -16,6 +16,7 @@ An AI-powered RTL Verification Agent that analyzes Verilog RTL designs, detects 
 - Markdown Verification Report
 - Email Summary (Optional)
 - Debug & Auto-Fix Stage (structured root cause, patch approval, rerun, debug report)
+- UVM Testbench Support (UVM detection, structured UVM facts, UVM simulation backend)
 
 ---
 
@@ -36,7 +37,8 @@ rtl_verify/
 │
 ├── example/
 │   ├── counter.v
-│   └── tb_counter.v
+│   ├── tb_counter.v
+│   └── counter_uvm_tb.v
 │
 ├── tools/
 │   ├── rtl_parser.py
@@ -45,6 +47,8 @@ rtl_verify/
 │   ├── rtl_analysis.py
 │   ├── tb_analysis.py
 │   ├── tb_checker.py
+│   ├── uvm.py
+│   ├── uvm_backend.py
 │   ├── report.py
 │   └── mail_sender.py
 │
@@ -134,7 +138,7 @@ RTL File
 RTL Parser
     │
     ▼
-Compile (Icarus Verilog)
+Compile (Icarus Verilog or UVM simulator - auto-detected)
     │
     ▼
 Simulation
@@ -195,6 +199,32 @@ The patch is only applied to the RTL file - never to the testbench - and a times
 
 ---
 
+## UVM Testbench Support
+
+The agent automatically detects **UVM testbenches** and switches to a UVM-aware path:
+
+1. **Detection** (`tools/uvm.py`) — the testbench content is scanned for UVM idioms (`uvm_test`/`uvm_env`/`extends uvm_...`/backtick `uvm_*` macros). A plain Verilog testbench gets the unchanged Icarus path.
+2. **UVM facts** — the testbench is parsed for a small, honest summary: top module/test class, components extended (driver, monitor, sequencer, scoreboard, ...), phases overridden (`build_phase`, `run_phase`, ...), sequences, `uvm_config_db` use, and the DUT instantiation. These facts are printed at startup and injected into the testbench-analysis prompt, so a UVM testbench is never flagged for missing `$monitor`/`rst`/`wr_en` plain-Verilog mechanisms.
+3. **UVM backend** (`tools/uvm_backend.py`) — UVM simulation is delegated to a UVM-capable simulator configured via environment variables (Icarus Verilog and Verilator do **not** support UVM):
+
+   ```env
+   # Single compile+run command:
+   UVM_SIM_CMD=vcs -full64 -sverilog -l {TEMP_DIR}/compile.log {RTL} {TB} && simv
+
+   # ...or two-step style (e.g. Questa):
+   UVM_COMPILE_CMD=vlog -sv -l {TEMP_DIR}/compile.log {RTL} {TB}
+   UVM_RUN_CMD=vsim -c -do "run -all; quit" tb_counter
+   ```
+
+   Supported placeholders: `{RTL}`, `{TB}`, `{TEMP_DIR}`. The backend returns the same compile/simulation status dict as the Icarus path, so log analysis, the report, and the debug-fix stage work unchanged.
+4. **Debug-fix stage** — the rerun after an approved patch automatically re-uses the UVM backend.
+
+An illustrative UVM testbench skeleton (`example/counter_uvm_tb.v`) is included. It needs a UVM-capable simulator to actually run.
+
+See `.env.example` for the full configuration.
+
+---
+
 ## Tests
 
 ```bash
@@ -210,7 +240,7 @@ The suite covers the debug-fix internals: JSON extraction, patch validation/appl
 ## Future Improvements
 
 - Verilator Support
-- UVM Testbench Analysis
+- (done) UVM Testbench Analysis - see UVM Testbench Support
 - CDC Analysis
 - Waveform Analysis
 - (done) AI-generated RTL Fixes - see the Debug & Auto-Fix stage

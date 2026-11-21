@@ -14,8 +14,10 @@ Options:
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from state import verification_state, reset_state
+from tools.uvm import detect_testbench_type, extract_uvm_facts
 
 
 def validate_file(filepath):
@@ -69,12 +71,27 @@ def main():
     verification_state["rtl_file"] = os.path.abspath(rtl_file)
     verification_state["tb_file"] = os.path.abspath(tb_file)
 
+    # Detect the testbench type and (for UVM) extract the structured facts
+    tb_text = Path(verification_state["tb_file"]).read_text(encoding="utf-8", errors="ignore")
+    testbench_type = detect_testbench_type(verification_state["tb_file"])
+    verification_state["testbench_type"] = testbench_type
+
+    if testbench_type == "UVM":
+        verification_state["uvm_facts"] = extract_uvm_facts(tb_text, verification_state["tb_file"])
+
     print("\n===================================")
     print(" RTL Verification Agent Started")
     print("===================================")
 
     print(f"RTL File : {rtl_file}")
     print(f"TB File  : {tb_file}")
+    print(f"Testbench Type : {testbench_type}")
+
+    if testbench_type == "UVM":
+        facts = verification_state["uvm_facts"]
+        print("UVM Facts:")
+        for key, value in facts.items():
+            print(f"  {key}: {value}")
 
     try:
         from agent import run_verification
